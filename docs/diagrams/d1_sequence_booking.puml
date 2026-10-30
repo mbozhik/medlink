@@ -1,0 +1,80 @@
+@startuml
+!include _style.iuml
+title Запись на прием с онлайн-оплатой
+
+actor "Пациент" as P
+participant "Мобильное\nприложение" as App
+participant "API Gateway" as GW
+participant "appointment-\nservice" as AS
+participant "schedule-\nservice" as SS
+database "Redis" as R
+participant "payment-\nservice" as PS
+participant "Платежный\nшлюз" as PSP
+queue "Kafka" as K
+participant "integration-\nservice" as IS
+participant "МИС" as MIS
+
+P -> App : выбирает слот,\nнажимает «Записаться»
+App -> GW : POST /appointments\n{slotId, reason}
+GW -> AS : POST /appointments
+AS -> SS : резерв слота (REST)
+SS -> R : SET slot:{id} NX EX 600
+alt слот свободен
+  R --> SS : OK
+  SS --> AS : слот удержан
+  AS -> AS : INSERT appointments\nstatus = RESERVED, bookingRevision = 1
+  AS --> App : 201 RESERVED, holdExpiresAt
+else слот уже занят
+  break отказ: завершить сценарий без платежа
+    R --> SS : nil
+    SS --> AS : занят
+    AS --> App : 409 SLOT_UNAVAILABLE
+    App --> P : «Время уже занято»
+  end
+end
+
+P -> App : «Оплатить»
+App -> GW : POST /appointments/{id}/payment
+GW -> AS : POST /appointments/{id}/payment
+AS -> PS : создать платеж (REST)
+PS -> PSP : создать платеж
+PSP --> PS : paymentId, paymentUrl
+PS --> AS : paymentId, paymentUrl
+AS --> App : 201 paymentUrl
+App -> PSP : открывает платежную форму
+P -> PSP : вводит данные карты
+
+PSP -> PS : вебхук: succeeded
+PS -> K : payment.succeeded
+K -> AS : payment.succeeded
+AS -> AS : status = PAID
+AS -> K : appointment.paid\n{appointmentId, bookingRevision}
+App -> GW : GET /appointments/{id}
+GW -> AS : GET /appointments/{id}
+AS --> App : PAID
+App --> P : «Оплачено, ожидает\nподтверждения клиникой»
+
+K -> IS : appointment.paid\n{appointmentId, bookingRevision}
+IS -> MIS : передать запись\n{appointmentId, bookingRevision, slotId}
+alt МИС приняла запись
+  MIS --> IS : misAppointmentId, bookingRevision
+  IS -> K : mis.confirmed\n{appointmentId, bookingRevision, misAppointmentId}
+  K -> AS : mis.confirmed\n{appointmentId, bookingRevision, misAppointmentId}
+  alt PAID и bookingRevision совпадает
+    AS -> AS : status = CONFIRMED
+    AS -> K : appointment.confirmed
+    note right of K : notification-service шлет push\n«Запись подтверждена»: адрес, кабинет
+  else ответ устарел или уже обработан
+    AS -> AS : игнорировать ответ
+  end
+else слот занят в МИС
+  MIS --> IS : отказ, bookingRevision
+  IS -> K : mis.rejected\n{appointmentId, bookingRevision}
+  note right of IS : далее сценарий UC 4:\nотмена и возврат денег
+end
+note over AS, IS
+  Ответ МИС применяется только к текущей bookingRevision в PAID.
+  Повтор или ответ на старое время после переноса игнорируется:
+  без подтверждения, отмены, возврата и уведомления.
+end note
+@enduml

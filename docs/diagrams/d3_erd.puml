@@ -1,0 +1,105 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+hide circle
+hide methods
+skinparam linetype ortho
+title Логическая модель данных (PostgreSQL, схема на каждый сервис)
+
+entity "catalog.clinics" as clinics {
+  * id : BIGSERIAL <<PK>>
+  --
+  * name : VARCHAR(200)
+  * address : VARCHAR(300)
+  * latitude, longitude : NUMERIC(9,6)
+}
+
+entity "catalog.doctors" as doctors {
+  * id : BIGSERIAL <<PK>>
+  --
+  * clinic_id : BIGINT <<FK>>
+  * full_name : VARCHAR(200)
+  * specialty : VARCHAR(100)
+  * price : INTEGER
+  rating : NUMERIC(2,1)
+  * mis_doctor_id : VARCHAR(64)
+}
+
+entity "schedule.slots" as slots {
+  * id : BIGSERIAL <<PK>>
+  --
+  * doctor_id : BIGINT <<FK>>
+  * start_at : TIMESTAMPTZ
+  * end_at : TIMESTAMPTZ
+  * cabinet : VARCHAR(20)
+  * is_available : BOOLEAN
+  * mis_slot_id : VARCHAR(64)
+}
+
+entity "appointment.patients" as patients {
+  * id : BIGSERIAL <<PK>>
+  --
+  * full_name : VARCHAR(200)
+  * phone : VARCHAR(20)
+  email : VARCHAR(200)
+}
+
+entity "appointment.appointments" as appointments {
+  * id : BIGSERIAL <<PK>>
+  --
+  * patient_id : BIGINT <<FK>>
+  * doctor_id : BIGINT <<FK>>
+  * clinic_id : BIGINT <<FK>>
+  * slot_id : BIGINT <<FK>>
+  * booking_revision : INTEGER
+  * start_at : TIMESTAMPTZ
+  * end_at : TIMESTAMPTZ
+  * doctor_name, clinic_address, cabinet : VARCHAR
+  reason : VARCHAR(500)
+  * price : INTEGER
+  * status : VARCHAR(20)
+  hold_expires_at : TIMESTAMPTZ
+  payment_id : VARCHAR(64) <<FK>>
+  mis_appointment_id : VARCHAR(64)
+  cancelled_by : VARCHAR(20)
+  cancel_reason : VARCHAR(300)
+  reminder_24h_sent_at, reminder_2h_sent_at : TIMESTAMPTZ
+  * created_at : TIMESTAMPTZ
+  * updated_at : TIMESTAMPTZ
+}
+
+note right of appointments
+  booking_revision >= 1; price >= 0 (целые рубли).
+  end_at > start_at; status — одно из 7 состояний.
+  cancelled_by: PATIENT / CLINIC / SYSTEM.
+  При отмене клиникой cancel_reason обязателен.
+end note
+
+entity "payment.payments" as payments {
+  * id : VARCHAR(64) <<PK>>
+  --
+  * appointment_id : BIGINT <<FK>>
+  * amount : INTEGER
+  * status : VARCHAR(20)
+  gateway_payment_id : VARCHAR(64)
+  refund_amount : INTEGER
+  refunded_at : TIMESTAMPTZ
+}
+
+entity "record.medical_records" as records {
+  * id : BIGSERIAL <<PK>>
+  --
+  * appointment_id : BIGINT <<FK>>
+  * conclusion : TEXT
+  * file_key : VARCHAR(300)
+  * issued_at : TIMESTAMPTZ
+}
+
+clinics ||--o{ doctors : работают
+doctors ||--o{ slots : расписание
+patients ||--o{ appointments : записи
+doctors ||--o{ appointments : принимает
+slots ||--o{ appointments : занимают
+appointments ||--o{ payments : оплаты и возвраты
+appointments ||--o| records : заключение
+@enduml

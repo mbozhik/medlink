@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>МедЛинк — интерактивный API</title>
+  <meta name="description" content="Учебный прототип МедЛинк: интерактивный Swagger с исполнением исходного FastAPI в браузере.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.31.0/swagger-ui.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="page-header">
+    <div class="heading"><a class="brand" href="./">МедЛинк</a><span>Учебный прототип API</span></div>
+    <nav aria-label="Материалы проекта">
+      <a href="https://github.com/mbozhik/medlink#readme">Отчет и материалы</a>
+      <a href="https://github.com/mbozhik/medlink/blob/main/api/main.py">Исходный код</a>
+      <a href="./openapi.json">OpenAPI JSON</a>
+    </nav>
+  </header>
+  <main>
+    <section class="demo-guide" aria-label="Запуск демонстрации">
+      <div class="guide-copy">
+        <h1>Проверьте API прямо здесь</h1>
+        <p>Откройте метод, нажмите <b>Try it out</b>, затем <b>Execute</b>. Исходный FastAPI работает в Python внутри браузера. Данные доступны только в этой вкладке и сбрасываются при перезапуске. Ответы МИС и платежи имитируются; уведомления не отправляются.</p>
+        <p class="quick-start">Начните с <a href="#/Каталог/list_doctors_api_v1_doctors_get">GET /api/v1/doctors</a>, выберите врача и получите его слоты. Для записи используйте свободный <code>slotId</code>. Тестовый пациент уже авторизован.</p>
+        <p class="quick-start">Адрес <code>medlink.local</code> в примерах — виртуальный адрес этой демонстрации. Он работает только через кнопку Execute на странице. Чтобы отправлять запросы из терминала, запустите API локально по инструкции в репозитории.</p>
+      </div>
+      <div class="demo-controls">
+        <p id="runtime-status" role="status" aria-live="polite">Загрузка Python… Первый запуск загружает среду выполнения и может занять несколько минут.</p>
+        <label for="role">Тестовая роль</label>
+        <select id="role" disabled>
+          <option value="patient-token">Пациент — Петров Иван</option>
+          <option value="patient2-token">Пациентка — Смирнова Ольга</option>
+          <option value="doctor-token">Врач — Иванова А. С.</option>
+          <option value="admin-token">Администратор клиники 1</option>
+          <option value="">Без авторизации</option>
+        </select>
+        <div class="actions"><button id="reset" disabled>Сбросить данные</button><button id="retry" hidden>Повторить загрузку</button></div>
+        <small>Сброс восстанавливает тестовые записи и расписание на ближайшие 7 дней. Служебные токены описаны ниже.</small>
+      </div>
+    </section>
+    <div id="swagger-ui"></div>
+    <noscript><p>Для интерактивного API включите JavaScript. Схему можно скачать по ссылке OpenAPI JSON.</p></noscript>
+  </main>
+  <footer>Учебная работа · МедЛинк · <a href="https://github.com/mbozhik/medlink">Репозиторий проекта</a></footer>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.31.0/swagger-ui-bundle.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

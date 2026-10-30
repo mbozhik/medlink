@@ -1,0 +1,33 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+title Жизненный цикл платежа
+
+note "Диаграмма описывает одну попытку оплаты (paymentId).\nПовторный платеж получает новый paymentId и отдельный жизненный цикл.\nВебхук обрабатывается по своему paymentId:\nповтор ошибки старой попытки не меняет новую." as AttemptScope
+
+state "PENDING\nожидает оплаты" as PENDING
+state "SUCCEEDED\nоплачено" as SUCCEEDED
+state "FAILED\nоплата отклонена" as FAILED
+state "REFUND_PENDING\nвозврат запрошен" as REFUND_PENDING
+state "REFUNDED\nденьги вернулись" as REFUNDED
+
+[*] --> PENDING : пациент нажал «Оплатить»,\npayment-service создал платеж в шлюзе
+PENDING --> SUCCEEDED : вебхук succeeded,\nрезерв слота еще действует
+PENDING --> REFUND_PENDING : вебхук succeeded, но резерв\nистек или запись отменена
+PENDING --> FAILED : вебхук failed
+
+SUCCEEDED --> REFUND_PENDING : отмена пациентом за 4 ч и более,\nотмена клиникой,\nотказ МИС (UC 4)
+SUCCEEDED --> SUCCEEDED : поздняя отмена или неявка:\nвозврат не запрашивается
+REFUND_PENDING --> REFUND_PENDING : ошибка шлюза,\nповтор (до 3 раз)
+REFUND_PENDING --> REFUNDED : вебхук refunded
+
+note right of REFUND_PENDING
+  после трех ошибок шлюза
+  обращение уходит
+  администратору клиники
+end note
+
+FAILED --> [*] : пока жив резерв,\nпациент создает новый платеж
+REFUNDED --> [*]
+SUCCEEDED --> [*] : прием состоялся
+@enduml

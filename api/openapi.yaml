@@ -1,0 +1,1646 @@
+openapi: 3.1.0
+info:
+  title: МедЛинк API
+  description: 'Серверная часть мобильного приложения сети медицинских клиник «МедЛинк»:
+    поиск врача, запись с онлайн-оплатой, перенос и отмена, история визитов, рабочие
+    места врача и администратора.
+
+
+    **Авторизация:** заголовок `Authorization: Bearer <токен>` с одним из тестовых
+    токенов:
+
+    * `patient-token` - пациент Петров Иван;
+
+    * `patient2-token` - пациентка Смирнова Ольга;
+
+    * `doctor-token` - врач Иванова А. С. (клиника 1);
+
+    * `admin-token` - администратор клиники 1.
+
+
+    Служебный метод для ответа МИС вызывается с заголовком `X-Internal-Token: mis-stub-token`.
+
+
+    Данные хранятся в памяти и сбрасываются при перезапуске. МИС и платежный шлюз
+    имитируются служебными методами; доставка уведомлений не реализована.'
+  version: 1.0.0
+paths:
+  /api/v1/doctors:
+    get:
+      tags:
+      - Каталог
+      summary: Найти врачей
+      description: 'Возвращает врачей с ближайшим свободным слотом. Фильтры необязательные
+        и сочетаются. Для фильтра «рядом со мной» приложение передает координаты пациента
+        (lat, lon): из геолокации телефона или из адреса, который пациент ввел вручную.
+        Тогда в ответе заполняется distanceKm, а врачи сортируются по расстоянию до
+        клиники. Без координат сортировка по ближайшему свободному слоту. Доступно
+        без авторизации.'
+      operationId: list_doctors_api_v1_doctors_get
+      parameters:
+      - name: specialty
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Специальность
+          examples:
+          - терапевт
+          title: Specialty
+        description: Специальность
+      - name: clinicId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          description: Клиника
+          examples:
+          - 1
+          title: Clinicid
+        description: Клиника
+      - name: date
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Показать ближайший слот на эту дату
+          title: Date
+        description: Показать ближайший слот на эту дату
+      - name: lat
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 90
+            minimum: -90
+          - type: 'null'
+          description: Широта пациента
+          examples:
+          - 55.7558
+          title: Lat
+        description: Широта пациента
+      - name: lon
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 180
+            minimum: -180
+          - type: 'null'
+          description: Долгота пациента
+          examples:
+          - 37.6173
+          title: Lon
+        description: Долгота пациента
+      - name: radiusKm
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0
+          - type: 'null'
+          description: Показать клиники не дальше N км (нужны lat и lon)
+          examples:
+          - 5
+          title: Radiuskm
+        description: Показать клиники не дальше N км (нужны lat и lon)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Doctor'
+                title: Response List Doctors Api V1 Doctors Get
+        '400':
+          description: 'Для поиска рядом нужны обе координаты: lat и lon'
+          content:
+            application/json:
+              example:
+                code: COORDINATES_REQUIRED
+                message: 'Для поиска рядом нужны обе координаты: lat и lon'
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/doctors/{doctorId}/slots:
+    get:
+      tags:
+      - Каталог
+      summary: Получить расписание врача на дату
+      description: Возвращает все будущие слоты врача на выбранную дату, свободные
+        и занятые. Доступно без авторизации.
+      operationId: list_slots_api_v1_doctors__doctorId__slots_get
+      parameters:
+      - name: doctorId
+        in: path
+        required: true
+        schema:
+          type: integer
+          description: Идентификатор врача
+          examples:
+          - 1
+          title: Doctorid
+        description: Идентификатор врача
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          description: Дата (YYYY-MM-DD)
+          title: Date
+        description: Дата (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Slot'
+                title: Response List Slots Api V1 Doctors  Doctorid  Slots Get
+        '404':
+          description: Врач не найден
+          content:
+            application/json:
+              example:
+                code: DOCTOR_NOT_FOUND
+                message: Врач не найден
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/appointments:
+    post:
+      tags:
+      - Записи
+      summary: Записаться на прием
+      description: Создает запись в статусе RESERVED и удерживает слот на 10 минут.
+        Если за это время запись не оплачена, она переходит в EXPIRED, а слот освобождается.
+      operationId: create_appointment_api_v1_appointments_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppointmentCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+        '400':
+          description: Слот уже прошел
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: SLOT_IN_PAST
+                message: Слот уже прошел
+        '404':
+          description: Слот не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: SLOT_NOT_FOUND
+                message: Слот не найден
+        '409':
+          description: Слот уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: SLOT_UNAVAILABLE
+                message: Слот уже занят
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/appointments/{appointmentId}:
+    get:
+      tags:
+      - Записи
+      summary: Получить запись
+      description: 'Доступно пациенту-владельцу записи, врачу этого приема и администратору
+        клиники. Администратор получает запись без медицинских данных: reason и record
+        равны null.'
+      operationId: get_appointment_endpoint_api_v1_appointments__appointmentId__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1001
+          title: Appointmentid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              example:
+                code: APPOINTMENT_NOT_FOUND
+                message: Запись не найдена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Записи
+      summary: Перенести запись на другой слот
+      description: 'Переносит запись на другой свободный слот того же врача. Возможно
+        для записей RESERVED и CONFIRMED не позднее чем за 4 часа до приема. Старый
+        слот освобождается, оплата сохраняется: цена у того же врача не меняется,
+        поэтому перенос проходит без доплаты и без возврата. Подтвержденная запись
+        после переноса переходит в PAID: новое время снова должна подтвердить клиника
+        (МИС). Пока клиника не подтвердила запись (PAID), перенести ее нельзя.'
+      operationId: reschedule_appointment_api_v1_appointments__appointmentId__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1001
+          title: Appointmentid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppointmentReschedule'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Слот другого врача или в прошлом
+          content:
+            application/json:
+              example:
+                code: SLOT_IN_PAST
+                message: Слот другого врача или в прошлом
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись или слот не найдены
+          content:
+            application/json:
+              example:
+                code: APPOINTMENT_NOT_FOUND
+                message: Запись или слот не найдены
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Слот занят, неподходящий статус или слишком поздно
+          content:
+            application/json:
+              example:
+                code: INVALID_STATUS
+                message: Слот занят, неподходящий статус или слишком поздно
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Записи
+      summary: Отменить запись
+      description: 'Отменяет запись до начала приема и освобождает слот. Правила возврата:
+
+        * пациент отменяет за 4 часа и более - возврат 100%;
+
+        * пациент отменяет позже чем за 4 часа - отмена возможна, но деньги не возвращаются
+        (refundAmount = 0), приложение заранее предупреждает об этом;
+
+        * администратор отменяет прием по инициативе клиники (болезнь врача, изменение
+        графика) - возврат 100% в любое время, причина обязательна.
+
+
+        При возврате статус платежа становится REFUND_PENDING, после подтверждения
+        шлюза - REFUNDED. Неоплаченная запись (RESERVED) отменяется без платежных
+        операций.'
+      operationId: cancel_appointment_api_v1_appointments__appointmentId__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1001
+          title: Appointmentid
+      - name: reason
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          description: Причина отмены. Обязательна для администратора
+          examples:
+          - Врач заболел
+          title: Reason
+        description: Причина отмены. Обязательна для администратора
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              example:
+                code: APPOINTMENT_NOT_FOUND
+                message: Запись не найдена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Прием уже начался или запись не активна
+          content:
+            application/json:
+              example:
+                code: INVALID_STATUS
+                message: Прием уже начался или запись не активна
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Администратор не указал причину
+          content:
+            application/json:
+              example:
+                code: REASON_REQUIRED
+                message: Администратор не указал причину
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/appointments/{appointmentId}/payment:
+    post:
+      tags:
+      - Оплата
+      summary: Создать платеж за прием
+      description: Создает платеж в платежном шлюзе и возвращает ссылку на платежную
+        форму. Возможно только для записи в статусе RESERVED, пока не истек резерв
+        слота.
+      operationId: create_payment_api_v1_appointments__appointmentId__payment_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1001
+          title: Appointmentid
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentInfo'
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              example:
+                code: APPOINTMENT_NOT_FOUND
+                message: Запись не найдена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Запись не ожидает оплаты или платеж уже создан
+          content:
+            application/json:
+              example:
+                code: NOT_AWAITING_PAYMENT
+                message: Запись не ожидает оплаты или платеж уже создан
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/payments/webhook:
+    post:
+      tags:
+      - Оплата
+      summary: Принять результат оплаты от платежного шлюза
+      description: 'Вызывается платежным шлюзом, а не приложением. Подлинность проверяется
+        по заголовку X-Webhook-Signature (в прототипе - `test-signature`). При успешной
+        оплате запись переходит в PAID («Оплачено, ожидает подтверждения клиникой»)
+        и передается в МИС. Если резерв к этому моменту истек или запись отменена,
+        деньги автоматически возвращаются. Событие refunded завершает возврат: REFUND_PENDING
+        -> REFUNDED. Повторная доставка того же события ничего не меняет.'
+      operationId: payment_webhook_api_v1_payments_webhook_post
+      parameters:
+      - name: x-webhook-signature
+        in: header
+        required: true
+        schema:
+          type: string
+          description: Подпись шлюза
+          examples:
+          - test-signature
+          title: X-Webhook-Signature
+        description: Подпись шлюза
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentWebhook'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAck'
+        '401':
+          description: Неверная подпись вебхука
+          content:
+            application/json:
+              example:
+                code: INVALID_SIGNATURE
+                message: Неверная подпись вебхука
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Платеж не найден
+          content:
+            application/json:
+              example:
+                code: PAYMENT_NOT_FOUND
+                message: Платеж не найден
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/patients/me/appointments:
+    get:
+      tags:
+      - Пациент
+      summary: Мои записи и заключения
+      description: Возвращает записи текущего пациента, сначала новые. У состоявшихся
+        приемов заполнено поле record с заключением врача из МИС.
+      operationId: my_appointments_api_v1_patients_me_appointments_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - RESERVED
+            - PAID
+            - CONFIRMED
+            - CANCELLED
+            - EXPIRED
+            - COMPLETED
+            - NO_SHOW
+            type: string
+          - type: 'null'
+          description: Фильтр по статусу
+          title: Status
+        description: Фильтр по статусу
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+                title: Response My Appointments Api V1 Patients Me Appointments Get
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/clinics/{clinicId}/appointments:
+    get:
+      tags:
+      - Клиника
+      summary: Записи клиники на день
+      description: 'Для врача - его приемы на дату с причиной обращения. Для администратора
+        - все приемы клиники со статусами оплаты, но без причины обращения: это медицинские
+        данные, администратору они не нужны. Отмененные и просроченные записи тоже
+        возвращаются, чтобы было видно освободившиеся слоты.'
+      operationId: clinic_appointments_api_v1_clinics__clinicId__appointments_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: clinicId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1
+          title: Clinicid
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          description: Дата (YYYY-MM-DD)
+          title: Date
+        description: Дата (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClinicAppointment'
+                title: Response Clinic Appointments Api V1 Clinics  Clinicid  Appointments
+                  Get
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Клиника не найдена
+          content:
+            application/json:
+              example:
+                code: CLINIC_NOT_FOUND
+                message: Клиника не найдена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/appointments/{appointmentId}/attendance:
+    patch:
+      tags:
+      - Клиника
+      summary: Отметить явку или неявку пациента
+      description: Администратор клиники отмечает, пришел ли пациент. Доступно для
+        оплаченных записей (CONFIRMED) после начала приема. ATTENDED переводит запись
+        в COMPLETED, NO_SHOW - в NO_SHOW.
+      operationId: mark_attendance_api_v1_appointments__appointmentId__attendance_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: appointmentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1002
+          title: Appointmentid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttendanceUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              example:
+                code: APPOINTMENT_NOT_FOUND
+                message: Запись не найдена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Прием еще не начался или запись не подтверждена
+          content:
+            application/json:
+              example:
+                code: INVALID_STATUS
+                message: Прием еще не начался или запись не подтверждена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/patients/{patientId}/records:
+    get:
+      tags:
+      - Клиника
+      summary: Заключения прошлых визитов пациента (для врача)
+      description: Врач видит заключения пациента по всем клиникам сети, но только
+        если у этого пациента есть подтвержденная запись к нему на сегодня или на
+        будущие даты. Администратор заключения не видит. Пациент смотрит свои заключения
+        через /patients/me/appointments.
+      operationId: patient_records_api_v1_patients__patientId__records_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: patientId
+        in: path
+        required: true
+        schema:
+          type: integer
+          examples:
+          - 1
+          title: Patientid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PatientRecord'
+                title: Response Patient Records Api V1 Patients  Patientid  Records
+                  Get
+        '401':
+          description: Нет токена или токен недействителен
+          content:
+            application/json:
+              example:
+                code: UNAUTHORIZED
+                message: Нет токена или токен недействителен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Нет прав на этот ресурс
+          content:
+            application/json:
+              example:
+                code: FORBIDDEN
+                message: Нет прав на этот ресурс
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Пациент не найден
+          content:
+            application/json:
+              example:
+                code: PATIENT_NOT_FOUND
+                message: Пациент не найден
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/mis/booking-result:
+    post:
+      tags:
+      - Интеграция
+      summary: Принять ответ МИС на передачу записи
+      description: 'Служебный метод: в целевой архитектуре integration-service публикует
+        события mis.confirmed и mis.rejected, в прототипе их заменяет этот вызов.
+        Заголовок X-Internal-Token (в прототипе - `mis-stub-token`).
+
+        * confirmed: запись PAID переходит в CONFIRMED, сохраняется номер записи в
+        МИС;
+
+        * rejected (UC 4): время уже занято в клинике - запись отменяется с отметкой
+        SYSTEM, запускается полный возврат.
+
+
+        bookingRevision должна совпадать с версией переданной записи. Ответ для другой
+        версии или записи не в статусе PAID (повтор, запись уже отменена) ничего не
+        меняет.'
+      operationId: mis_booking_result_api_v1_integrations_mis_booking_result_post
+      parameters:
+      - name: x-internal-token
+        in: header
+        required: true
+        schema:
+          type: string
+          description: Служебный токен
+          examples:
+          - mis-stub-token
+          title: X-Internal-Token
+        description: Служебный токен
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MisBookingResult'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAck'
+        '401':
+          description: Неверный служебный токен
+          content:
+            application/json:
+              example:
+                code: INVALID_INTERNAL_TOKEN
+                message: Неверный служебный токен
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              example:
+                code: APPOINTMENT_NOT_FOUND
+                message: Запись не найдена
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Appointment:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 1001
+        patientId:
+          type: integer
+          title: Patientid
+          examples:
+          - 1
+        doctor:
+          $ref: '#/components/schemas/DoctorRef'
+        clinic:
+          $ref: '#/components/schemas/Clinic'
+          description: Снимок данных клиники на момент записи (адрес попадает в напоминания)
+        slotId:
+          type: integer
+          title: Slotid
+          examples:
+          - 101
+        bookingRevision:
+          type: integer
+          minimum: 1.0
+          title: Bookingrevision
+          description: Версия записи для корреляции ответа МИС; увеличивается при
+            переносе
+          examples:
+          - 1
+        startAt:
+          type: string
+          format: date-time
+          title: Startat
+        cabinet:
+          type: string
+          title: Cabinet
+          examples:
+          - '214'
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+          description: 'Причина обращения со слов пациента. Для администратора всегда
+            null: это медицинские данные'
+        price:
+          type: integer
+          title: Price
+          examples:
+          - 2500
+        status:
+          type: string
+          enum:
+          - RESERVED
+          - PAID
+          - CONFIRMED
+          - CANCELLED
+          - EXPIRED
+          - COMPLETED
+          - NO_SHOW
+          title: Status
+          description: RESERVED - слот удерживается до оплаты; PAID - оплачено, ожидает
+            подтверждения клиникой (МИС); CONFIRMED - подтверждено клиникой; CANCELLED
+            - отменено; EXPIRED - не оплачено вовремя; COMPLETED - прием состоялся;
+            NO_SHOW - неявка
+        misAppointmentId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Misappointmentid
+          description: Номер записи в МИС после подтверждения
+          examples:
+          - MIS-0001003
+        holdExpiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Holdexpiresat
+          description: До какого времени удерживается слот (для RESERVED)
+        payment:
+          anyOf:
+          - $ref: '#/components/schemas/PaymentInfo'
+          - type: 'null'
+        cancelledBy:
+          anyOf:
+          - type: string
+            enum:
+            - PATIENT
+            - CLINIC
+            - SYSTEM
+          - type: 'null'
+          title: Cancelledby
+          description: 'Кто отменил запись: PATIENT - пациент, CLINIC - клиника, SYSTEM
+            - система (конфликт с МИС)'
+        cancelReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cancelreason
+          examples:
+          - Врач заболел
+        record:
+          anyOf:
+          - $ref: '#/components/schemas/MedicalRecord'
+          - type: 'null'
+          description: Заключение врача, если прием состоялся. Для администратора
+            всегда null
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+      type: object
+      required:
+      - id
+      - patientId
+      - doctor
+      - clinic
+      - slotId
+      - bookingRevision
+      - startAt
+      - cabinet
+      - reason
+      - price
+      - status
+      - holdExpiresAt
+      - createdAt
+      - updatedAt
+      title: Appointment
+    AppointmentCreate:
+      properties:
+        slotId:
+          type: integer
+          title: Slotid
+          description: Идентификатор свободного слота
+          examples:
+          - 101
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Reason
+          description: Причина обращения
+          examples:
+          - Температура и кашель третий день
+      type: object
+      required:
+      - slotId
+      title: AppointmentCreate
+    AppointmentReschedule:
+      properties:
+        slotId:
+          type: integer
+          title: Slotid
+          description: Новый слот того же врача
+          examples:
+          - 102
+      type: object
+      required:
+      - slotId
+      title: AppointmentReschedule
+    AttendanceUpdate:
+      properties:
+        attendance:
+          type: string
+          enum:
+          - ATTENDED
+          - NO_SHOW
+          title: Attendance
+          description: ATTENDED - пациент пришел, NO_SHOW - неявка
+      type: object
+      required:
+      - attendance
+      title: AttendanceUpdate
+    Clinic:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 1
+        name:
+          type: string
+          title: Name
+          examples:
+          - МедЛинк на Тверской
+        address:
+          type: string
+          title: Address
+          examples:
+          - Москва, ул. Тверская, 12
+        latitude:
+          type: number
+          title: Latitude
+          description: Широта клиники
+          examples:
+          - 55.7616
+        longitude:
+          type: number
+          title: Longitude
+          description: Долгота клиники
+          examples:
+          - 37.6087
+      type: object
+      required:
+      - id
+      - name
+      - address
+      - latitude
+      - longitude
+      title: Clinic
+    ClinicAppointment:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 1001
+        startAt:
+          type: string
+          format: date-time
+          title: Startat
+        cabinet:
+          type: string
+          title: Cabinet
+        doctor:
+          $ref: '#/components/schemas/DoctorRef'
+        patientId:
+          type: integer
+          title: Patientid
+          examples:
+          - 1
+        patientName:
+          type: string
+          title: Patientname
+          examples:
+          - Петров Иван
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+          description: Причина обращения. Видит только врач, для администратора null
+        status:
+          type: string
+          enum:
+          - RESERVED
+          - PAID
+          - CONFIRMED
+          - CANCELLED
+          - EXPIRED
+          - COMPLETED
+          - NO_SHOW
+          title: Status
+        paymentStatus:
+          anyOf:
+          - type: string
+            enum:
+            - PENDING
+            - SUCCEEDED
+            - FAILED
+            - REFUND_PENDING
+            - REFUNDED
+          - type: 'null'
+          title: Paymentstatus
+      type: object
+      required:
+      - id
+      - startAt
+      - cabinet
+      - doctor
+      - patientId
+      - patientName
+      - reason
+      - status
+      - paymentStatus
+      title: ClinicAppointment
+    Doctor:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 1
+        fullName:
+          type: string
+          title: Fullname
+          examples:
+          - Иванова Анна Сергеевна
+        specialty:
+          type: string
+          title: Specialty
+          examples:
+          - терапевт
+        clinic:
+          $ref: '#/components/schemas/Clinic'
+        price:
+          type: integer
+          title: Price
+          description: Стоимость приема, руб.
+          examples:
+          - 2500
+        rating:
+          type: number
+          maximum: 5.0
+          minimum: 0.0
+          title: Rating
+          description: Рейтинг врача
+          examples:
+          - 4.8
+        nearestSlotAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Nearestslotat
+          description: Ближайший свободный слот (с учетом фильтра по дате). null,
+            если свободных нет
+        distanceKm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Distancekm
+          description: Расстояние от пациента до клиники, км. Заполняется, если переданы
+            lat и lon
+          examples:
+          - 1.4
+      type: object
+      required:
+      - id
+      - fullName
+      - specialty
+      - clinic
+      - price
+      - rating
+      - nearestSlotAt
+      - distanceKm
+      title: Doctor
+    DoctorRef:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 1
+        fullName:
+          type: string
+          title: Fullname
+          examples:
+          - Иванова Анна Сергеевна
+        specialty:
+          type: string
+          title: Specialty
+          examples:
+          - терапевт
+      type: object
+      required:
+      - id
+      - fullName
+      - specialty
+      title: DoctorRef
+    ErrorResponse:
+      properties:
+        code:
+          type: string
+          title: Code
+          description: Машиночитаемый код ошибки
+        message:
+          type: string
+          title: Message
+          description: Текст ошибки для пользователя
+      type: object
+      required:
+      - code
+      - message
+      title: ErrorResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    MedicalRecord:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 501
+        appointmentId:
+          type: integer
+          title: Appointmentid
+          examples:
+          - 1001
+        conclusion:
+          type: string
+          title: Conclusion
+          description: Краткое заключение врача
+          examples:
+          - ОРВИ, назначено лечение
+        fileUrl:
+          type: string
+          title: Fileurl
+          description: Ссылка на PDF заключения в хранилище
+        issuedAt:
+          type: string
+          format: date-time
+          title: Issuedat
+          description: Когда заключение получено из МИС
+      type: object
+      required:
+      - id
+      - appointmentId
+      - conclusion
+      - fileUrl
+      - issuedAt
+      title: MedicalRecord
+    MisBookingResult:
+      properties:
+        appointmentId:
+          type: integer
+          title: Appointmentid
+          examples:
+          - 1003
+        bookingRevision:
+          type: integer
+          minimum: 1.0
+          title: Bookingrevision
+          description: Версия записи, переданная в МИС; устаревшие ответы игнорируются
+          examples:
+          - 1
+        result:
+          type: string
+          enum:
+          - confirmed
+          - rejected
+          title: Result
+          description: confirmed - МИС приняла запись, rejected - МИС отклонила (время
+            уже занято в клинике)
+        misAppointmentId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Misappointmentid
+          description: Номер записи в МИС, для confirmed
+          examples:
+          - MIS-0001003
+      type: object
+      required:
+      - appointmentId
+      - bookingRevision
+      - result
+      title: MisBookingResult
+    PatientRecord:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 501
+        appointmentId:
+          type: integer
+          title: Appointmentid
+          examples:
+          - 1001
+        visitAt:
+          type: string
+          format: date-time
+          title: Visitat
+          description: Дата и время приема
+        doctor:
+          $ref: '#/components/schemas/DoctorRef'
+        conclusion:
+          type: string
+          title: Conclusion
+          examples:
+          - Здоров, рекомендован повторный осмотр через год
+        fileUrl:
+          type: string
+          title: Fileurl
+      type: object
+      required:
+      - id
+      - appointmentId
+      - visitAt
+      - doctor
+      - conclusion
+      - fileUrl
+      title: PatientRecord
+    PaymentInfo:
+      properties:
+        paymentId:
+          type: string
+          title: Paymentid
+          examples:
+          - pay_7f3a91
+        status:
+          type: string
+          enum:
+          - PENDING
+          - SUCCEEDED
+          - FAILED
+          - REFUND_PENDING
+          - REFUNDED
+          title: Status
+          description: PENDING - ожидает оплаты, SUCCEEDED - оплачено, FAILED - ошибка
+            оплаты, REFUND_PENDING - запущен возврат, REFUNDED - деньги вернулись
+            на карту
+        amount:
+          type: integer
+          title: Amount
+          description: Сумма, руб.
+          examples:
+          - 2500
+        refundAmount:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Refundamount
+          description: Сумма возврата, руб. 0 - отмена позже чем за 4 часа, деньги
+            не возвращаются. null - отмены не было
+          examples:
+          - 2500
+        paymentUrl:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Paymenturl
+          description: Ссылка на платежную форму шлюза
+      type: object
+      required:
+      - paymentId
+      - status
+      - amount
+      - paymentUrl
+      title: PaymentInfo
+    PaymentWebhook:
+      properties:
+        paymentId:
+          type: string
+          title: Paymentid
+          examples:
+          - pay_7f3a91
+        status:
+          type: string
+          enum:
+          - succeeded
+          - failed
+          - refunded
+          title: Status
+          description: succeeded - оплата прошла, failed - оплата отклонена, refunded
+            - возврат завершен
+      type: object
+      required:
+      - paymentId
+      - status
+      title: PaymentWebhook
+    Slot:
+      properties:
+        id:
+          type: integer
+          title: Id
+          examples:
+          - 101
+        doctorId:
+          type: integer
+          title: Doctorid
+          examples:
+          - 1
+        startAt:
+          type: string
+          format: date-time
+          title: Startat
+          description: Начало приема (ISO 8601, МСК)
+        endAt:
+          type: string
+          format: date-time
+          title: Endat
+          description: Окончание приема (ISO 8601, МСК)
+        cabinet:
+          type: string
+          title: Cabinet
+          description: Номер кабинета
+          examples:
+          - '214'
+        isAvailable:
+          type: boolean
+          title: Isavailable
+          description: Свободен ли слот для записи
+      type: object
+      required:
+      - id
+      - doctorId
+      - startAt
+      - endAt
+      - cabinet
+      - isAvailable
+      title: Slot
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WebhookAck:
+      properties:
+        received:
+          type: boolean
+          title: Received
+          default: true
+      type: object
+      title: WebhookAck
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      description: 'Тестовые токены: patient-token, patient2-token, doctor-token,
+        admin-token'
+      scheme: bearer
+tags:
+- name: Каталог
+  description: Врачи и свободные слоты (US 1)
+- name: Записи
+  description: Запись, перенос, отмена (US 2, US 4, US 5, US 9)
+- name: Оплата
+  description: Оплата записи, возврат и вебхук платежного шлюза (US 2, US 5)
+- name: Пациент
+  description: История визитов и заключения (US 6, US 7)
+- name: Клиника
+  description: Рабочие места врача и администратора (US 7, US 8, US 9)
+- name: Интеграция
+  description: Ответ МИС на передачу записи (US 2, UC 4). В целевой архитектуре это
+    событие integration-service, в прототипе - служебный метод

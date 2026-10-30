@@ -1,0 +1,8 @@
+{
+  "name": "medlink-validation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Validation of FastAPI inside the browser Python runtime",
+  "scripts": { "test": "node --test tests/browser-runtime.test.mjs" },
+  "devDependencies": { "pyodide": "0.29.4" }
+}

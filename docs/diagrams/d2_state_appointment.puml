@@ -1,0 +1,37 @@
+@startuml
+!pragma layout smetana
+!include _style.iuml
+title Жизненный цикл записи на прием
+
+[*] --> RESERVED : пациент выбрал слот
+
+state "RESERVED\nожидает оплаты" as RESERVED
+state "PAID\nоплачена, ждет\nподтверждения клиники" as PAID
+state "CONFIRMED\nподтверждена клиникой" as CONFIRMED
+state "EXPIRED\nне оплачена вовремя" as EXPIRED
+state "CANCELLED\nотменена" as CANCELLED
+state "COMPLETED\nприем состоялся" as COMPLETED
+state "NO_SHOW\nнеявка" as NO_SHOW
+
+RESERVED --> RESERVED : перенос (не позднее 4 ч) /\nbookingRevision += 1
+RESERVED --> PAID : оплата прошла\n(вебхук шлюза)
+RESERVED --> EXPIRED : 10 минут без оплаты
+RESERVED --> CANCELLED : отмена пациентом\nили клиникой
+
+PAID --> CONFIRMED : МИС приняла запись\n[bookingRevision совпадает]
+PAID --> CANCELLED : МИС отклонила [версия совпадает] - возврат 100%;\nотмена пациентом или клиникой
+CONFIRMED --> PAID : перенос (не позднее 4 ч):\nновое время ждет клинику
+note right of PAID
+  При переносе bookingRevision += 1.
+  Устаревший ответ МИС игнорируется.
+  Пока PAID, перенос запрещен.
+end note
+CONFIRMED --> CANCELLED : пациент: за 4 ч и более - возврат 100%,\nпозже - без возврата;\nклиника - возврат 100%
+CONFIRMED --> COMPLETED : администратор\nотметил явку
+CONFIRMED --> NO_SHOW : администратор\nотметил неявку
+
+EXPIRED --> [*]
+CANCELLED --> [*]
+COMPLETED --> [*]
+NO_SHOW --> [*]
+@enduml

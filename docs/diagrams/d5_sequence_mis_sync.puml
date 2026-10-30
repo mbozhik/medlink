@@ -1,0 +1,41 @@
+@startuml
+!include _style.iuml
+title Синхронизация расписания с МИС (каждые 15 минут)
+
+participant "Планировщик\nintegration-service" as JOB
+participant "integration-\nservice" as IS
+participant "МИС" as MIS
+participant "schedule-\nservice" as SS
+participant "catalog-\nservice" as CS
+queue "Kafka" as K
+participant "appointment-\nservice" as AS
+participant "notification-\nservice" as NS
+
+JOB -> IS : запуск импорта
+IS -> MIS : запросить расписание\nна 14 дней вперед
+alt МИС ответила
+  MIS --> IS : слоты врачей
+  IS -> IS : сравнить с прошлым\nимпортом
+  IS -> SS : новые и измененные слоты (REST)
+  SS --> IS : OK
+else МИС недоступна
+  MIS --> IS : таймаут
+  IS -> IS : записать WARN,\nповторить в следующий запуск
+  note right of IS : текущее расписание\nостается в силе
+end
+
+opt раз в сутки
+  IS -> MIS : запросить врачей, услуги и цены
+  MIS --> IS : справочники
+  IS -> CS : обновить врачей и цены (REST)
+end
+
+opt в МИС исчез слот с активной записью
+  IS -> K : schedule.slot_removed
+  K -> AS : schedule.slot_removed
+  AS -> AS : отменить запись,\nзапустить возврат
+  AS -> K : appointment.cancelled
+  K -> NS : appointment.cancelled
+  NS -> NS : push и SMS пациенту:\nприем отменен клиникой
+end
+@enduml

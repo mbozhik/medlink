@@ -1,0 +1,50 @@
+skinparam defaultFontName "Liberation Sans"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam ArrowColor #2B4A66
+skinparam ArrowFontColor #22405C
+skinparam ArrowFontSize 12
+skinparam TitleFontSize 17
+skinparam TitleFontColor #1B3A54
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #C9B458
+skinparam sequence {
+  ParticipantBackgroundColor #E8F0F9
+  ParticipantBorderColor #2B4A66
+  ParticipantFontColor #1B3A54
+  ActorBorderColor #2B4A66
+  ActorBackgroundColor #E8F0F9
+  LifeLineBorderColor #8FA6BC
+  GroupBorderColor #8FA6BC
+  GroupBackgroundColor #F4F7FB
+  DatabaseBackgroundColor #DCE8F5
+  QueueBackgroundColor #DCE8F5
+}
+skinparam state {
+  BackgroundColor #E8F0F9
+  BorderColor #2B4A66
+  FontColor #1B3A54
+  StartColor #2B4A66
+  EndColor #2B4A66
+}
+skinparam activity {
+  BackgroundColor #E8F0F9
+  BorderColor #2B4A66
+  FontColor #1B3A54
+  StartColor #2B4A66
+  EndColor #2B4A66
+  BarColor #2B4A66
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #2B4A66
+}
+skinparam swimlane {
+  BorderColor #8FA6BC
+  TitleFontColor #1B3A54
+}
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #2B4A66
+  HeaderBackgroundColor #E8F0F9
+  FontColor #1B3A54
+  AttributeFontSize 12
+}

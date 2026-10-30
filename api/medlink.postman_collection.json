@@ -1,0 +1,1161 @@
+{
+  "info": {
+    "name": "МедЛинк API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Сквозной сценарий: поиск врача рядом, запись, оплата, подтверждение клиникой, перенос, заключения, скрытие медданных от администратора, неявка, отмена с возвратом, отмена клиникой. Запустите сервер (uvicorn main:app), укажите его адрес в переменной baseUrl и прогоните коллекцию через Run collection."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Даты в часовом поясе МСК: завтра - для записи, вчера - для отметки неявки",
+          "const msk = new Date(Date.now() + 3 * 3600 * 1000);",
+          "pm.collectionVariables.set('tomorrow', new Date(msk.getTime() + 86400000).toISOString().slice(0, 10));",
+          "pm.collectionVariables.set('yesterday', new Date(msk.getTime() - 86400000).toISOString().slice(0, 10));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "",
+      "description": "Адрес сервера, который uvicorn выводит в консоль при запуске"
+    },
+    {
+      "key": "patientToken",
+      "value": "patient-token"
+    },
+    {
+      "key": "adminToken",
+      "value": "admin-token"
+    },
+    {
+      "key": "doctorToken",
+      "value": "doctor-token"
+    },
+    {
+      "key": "webhookSignature",
+      "value": "test-signature"
+    },
+    {
+      "key": "misToken",
+      "value": "mis-stub-token"
+    },
+    {
+      "key": "tomorrow",
+      "value": ""
+    },
+    {
+      "key": "yesterday",
+      "value": ""
+    },
+    {
+      "key": "slotId",
+      "value": ""
+    },
+    {
+      "key": "slotId2",
+      "value": ""
+    },
+    {
+      "key": "slotId3",
+      "value": ""
+    },
+    {
+      "key": "appointmentId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "bookingRevision",
+      "value": ""
+    },
+    {
+      "key": "appointmentId2",
+      "value": ""
+    },
+    {
+      "key": "paymentId2",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Найти врачей-терапевтов",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/doctors?specialty=терапевт",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "doctors"
+          ],
+          "query": [
+            {
+              "key": "specialty",
+              "value": "терапевт"
+            }
+          ]
+        },
+        "description": "US 1. Публичный метод, токен не нужен."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Есть врачи\", () => pm.expect(pm.response.json().length).to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Врачи рядом со мной (до 3 км)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/doctors?lat=55.7070&lon=37.5860&radiusKm=3",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "doctors"
+          ],
+          "query": [
+            {
+              "key": "lat",
+              "value": "55.7070"
+            },
+            {
+              "key": "lon",
+              "value": "37.5860"
+            },
+            {
+              "key": "radiusKm",
+              "value": "3"
+            }
+          ]
+        },
+        "description": "US 1. Координаты пациента у площади Гагарина: из геолокации или из введенного адреса."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const d = pm.response.json();",
+              "pm.test('Только ближняя клиника, есть расстояние', () => { pm.expect(d.length).to.be.above(0); d.forEach(x => pm.expect(x.distanceKm).to.be.below(3)); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Расписание врача на завтра",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/doctors/1/slots?date={{tomorrow}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "doctors",
+            "1",
+            "slots"
+          ],
+          "query": [
+            {
+              "key": "date",
+              "value": "{{tomorrow}}"
+            }
+          ]
+        },
+        "description": "US 1. Сохраняет три свободных слота в переменные коллекции."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const free = pm.response.json().filter(s => s.isAvailable);",
+              "pm.test('Есть свободные слоты', () => pm.expect(free.length).to.be.above(2));",
+              "pm.collectionVariables.set('slotId', free[0].id);",
+              "pm.collectionVariables.set('slotId2', free[1].id);",
+              "pm.collectionVariables.set('slotId3', free[2].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Записаться на прием",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments"
+          ]
+        },
+        "description": "US 2. Слот удерживается 10 минут до оплаты.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"slotId\": {{slotId}},\n  \"reason\": \"Температура и кашель третий день\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+              "const a = pm.response.json();",
+              "pm.test('Статус RESERVED', () => pm.expect(a.status).to.eql('RESERVED'));",
+              "pm.collectionVariables.set('appointmentId', a.id);",
+              "pm.collectionVariables.set('bookingRevision', a.bookingRevision);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Получить запись",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        },
+        "description": "US 2."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Создать платеж",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/payment",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}",
+            "payment"
+          ]
+        },
+        "description": "US 2. Возвращает ссылку на платежную форму шлюза."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('paymentId', pm.response.json().paymentId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Вебхук: оплата прошла",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "{{webhookSignature}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments/webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "webhook"
+          ]
+        },
+        "description": "US 2. Этот запрос в жизни отправляет платежный шлюз.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"paymentId\": \"{{paymentId}}\",\n  \"status\": \"succeeded\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Проверить статус «Оплачено, ожидает подтверждения клиникой»",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        },
+        "description": "US 2. Оплата прошла, запись передана в МИС и ждет ответа."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "pm.test('Статус PAID', () => pm.expect(pm.response.json().status).to.eql('PAID'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Ответ МИС: запись принята",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Internal-Token",
+            "value": "{{misToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/integrations/mis/booking-result",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "integrations",
+            "mis",
+            "booking-result"
+          ]
+        },
+        "description": "US 2. В жизни это событие integration-service, в прототипе служебный метод.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"appointmentId\": {{appointmentId}},\n  \"bookingRevision\": {{bookingRevision}},\n  \"result\": \"confirmed\",\n  \"misAppointmentId\": \"MIS-0001\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Проверить, что запись подтверждена",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "pm.test('Статус CONFIRMED', () => pm.expect(pm.response.json().status).to.eql('CONFIRMED'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Перенести запись",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        },
+        "description": "US 4. Перенос без доплаты и без возврата.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"slotId\": {{slotId2}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const a = pm.response.json();",
+              "pm.collectionVariables.set('bookingRevision', a.bookingRevision);",
+              "pm.test('Слот изменился, оплата сохранилась, новое время ждет клинику', () => { pm.expect(a.slotId).to.eql(pm.collectionVariables.get('slotId2') * 1); pm.expect(a.payment.status).to.eql('SUCCEEDED'); pm.expect(a.status).to.eql('PAID'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Ответ МИС: новое время принято",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Internal-Token",
+            "value": "{{misToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/integrations/mis/booking-result",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "integrations",
+            "mis",
+            "booking-result"
+          ]
+        },
+        "description": "US 4.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"appointmentId\": {{appointmentId}},\n  \"bookingRevision\": {{bookingRevision}},\n  \"result\": \"confirmed\",\n  \"misAppointmentId\": \"MIS-0002\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Мои записи и заключения",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/patients/me/appointments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "patients",
+            "me",
+            "appointments"
+          ]
+        },
+        "description": "US 6."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Врач смотрит прошлые заключения пациента",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/patients/1/records",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "patients",
+            "1",
+            "records"
+          ]
+        },
+        "description": "US 7. Доступ есть, потому что у пациента есть подтвержденная запись к этому врачу."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "pm.test('Есть заключение', () => pm.expect(pm.response.json()[0].conclusion).to.be.a('string'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Ошибка: администратор не видит заключения",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/patients/1/records",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "patients",
+            "1",
+            "records"
+          ]
+        },
+        "description": "Ролевая модель: заключения видит только врач."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 403\", () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Администратор открывает запись без медданных",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/1001",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "1001"
+          ]
+        },
+        "description": "Ролевая модель: у записи 1001 есть причина обращения и заключение, но администратор их не получает."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const a = pm.response.json();",
+              "pm.test('Причина и заключение скрыты', () => { pm.expect(a.reason).to.eql(null); pm.expect(a.record).to.eql(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. Записи клиники за вчера (администратор)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/clinics/1/appointments?date={{yesterday}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "clinics",
+            "1",
+            "appointments"
+          ],
+          "query": [
+            {
+              "key": "date",
+              "value": "{{yesterday}}"
+            }
+          ]
+        },
+        "description": "US 8."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "pm.test('Причина обращения скрыта', () => pm.response.json().forEach(x => pm.expect(x.reason).to.eql(null)));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18. Отметить неявку (администратор)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/1002/attendance",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "1002",
+            "attendance"
+          ]
+        },
+        "description": "US 8. Запись 1002 создается при запуске сервера. После отметки повторный прогон вернет 409 - перезапустите сервер.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"attendance\": \"NO_SHOW\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const a = pm.response.json();",
+              "pm.test('Статус NO_SHOW, медданных нет', () => { pm.expect(a.status).to.eql('NO_SHOW'); pm.expect(a.reason).to.eql(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19. Отменить запись заранее: возврат 100%",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        },
+        "description": "US 5. До приема больше 4 часов."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const a = pm.response.json();",
+              "pm.test('Отменена, запущен полный возврат', () => { pm.expect(a.status).to.eql('CANCELLED'); pm.expect(a.payment.status).to.eql('REFUND_PENDING'); pm.expect(a.payment.refundAmount).to.eql(a.price); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20. Вебхук: возврат завершен",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "{{webhookSignature}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments/webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "webhook"
+          ]
+        },
+        "description": "US 5.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"paymentId\": \"{{paymentId}}\",\n  \"status\": \"refunded\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "21. Проверить статус REFUNDED",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "pm.test('Деньги вернулись', () => pm.expect(pm.response.json().payment.status).to.eql('REFUNDED'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "22. Новая запись для отмены клиникой",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments"
+          ]
+        },
+        "description": "US 9, подготовка.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"slotId\": {{slotId3}},\n  \"reason\": \"Плановый осмотр\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('appointmentId2', pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "23. Оплатить новую запись",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId2}}/payment",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId2}}",
+            "payment"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('paymentId2', pm.response.json().paymentId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "24. Вебхук: оплата новой записи",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "{{webhookSignature}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments/webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "webhook"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"paymentId\": \"{{paymentId2}}\",\n  \"status\": \"succeeded\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "25. Отмена по инициативе клиники",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId2}}?reason=Врач заболел",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments",
+            "{{appointmentId2}}"
+          ],
+          "query": [
+            {
+              "key": "reason",
+              "value": "Врач заболел"
+            }
+          ]
+        },
+        "description": "US 9. Возврат всей суммы независимо от времени до приема."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+              "const a = pm.response.json();",
+              "pm.test('Отменила клиника, возврат 100%, медданных нет', () => { pm.expect(a.cancelledBy).to.eql('CLINIC'); pm.expect(a.payment.refundAmount).to.eql(a.price); pm.expect(a.reason).to.eql(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "26. Ошибка: запись без токена",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/appointments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "appointments"
+          ]
+        },
+        "description": "Проверка авторизации.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"slotId\": {{slotId}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
